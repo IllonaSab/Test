@@ -11,6 +11,10 @@ const menu = new Menu();
 const order = new Order();
 const paymentSystem = new PaymentSystem();
 const tracking = new OrderTracking();
+app.get('/menu', (req, res) => {
+    res.json({ menu: menu.getMenu() }); // ✅ Renvoie le menu sous forme de JSON
+});
+
 
 // Route pour ajouter un article au menu
 app.post('/menu', (req, res) => {
