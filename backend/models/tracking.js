@@ -7,6 +7,13 @@ const trackingSchema = new mongoose.Schema({
         enum: ['préparation', 'prêt', 'livré', 'annulée'],
         default: 'préparation'
     },
+    items: [{
+        item: { type: String, required: true },
+        price: { type: Number, required: true },
+        quantity: { type: Number, default: 1 }
+    }],
+    total: { type: Number, required: true },
+    paymentMethod: { type: String, enum: ['card', 'cash'] },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
     estimatedTime: { type: Number, default: 30 }, // en minutes
@@ -20,7 +27,7 @@ class Tracking {
         this.model = TrackingModel;
     }
 
-    async createTracking(orderNumber) {
+    async createTracking(orderNumber, items, total) {
         try {
             const existingOrder = await this.model.findOne({ orderNumber });
             if (existingOrder) {
@@ -33,6 +40,8 @@ class Tracking {
             const tracking = new this.model({
                 orderNumber,
                 status: 'préparation',
+                items: items,
+                total: total,
                 estimatedTime: 30 // 30 minutes par défaut
             });
 
@@ -222,6 +231,37 @@ class Tracking {
             return {
                 success: false,
                 message: 'Erreur lors de l\'ajout de la note.',
+                error: error.message
+            };
+        }
+    }
+
+    async updatePaymentMethod(orderNumber, paymentMethod) {
+        try {
+            const tracking = await this.model.findOneAndUpdate(
+                { orderNumber },
+                { 
+                    paymentMethod,
+                    updatedAt: new Date()
+                },
+                { new: true }
+            );
+
+            if (!tracking) {
+                return {
+                    success: false,
+                    message: 'Commande non trouvée.'
+                };
+            }
+
+            return {
+                success: true,
+                tracking
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: 'Erreur lors de la mise à jour du mode de paiement.',
                 error: error.message
             };
         }

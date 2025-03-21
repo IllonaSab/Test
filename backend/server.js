@@ -5,6 +5,7 @@ const Menu = require('./models/menu');
 const Order = require('./models/order');
 const PaymentSystem = require('./models/payment_system');
 const Tracking = require('./models/tracking');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
@@ -20,25 +21,46 @@ const paymentSystem = new PaymentSystem();
 const tracking = new Tracking();
 
 // Routes
-app.post('/menu', async (req, res) => {
+app.post('/api/menu', async (req, res) => {
     try {
-        const result = await menu.addItem(req.body);
-        res.status(201).json({ menu: await menu.getMenu() });
+        const menuItem = {
+            name: req.body.item,
+            price: req.body.price,
+            description: ''
+        };
+        const result = await menu.addItem(menuItem);
+        const formattedMenu = await menu.getMenu();
+        res.status(201).json({ 
+            menu: formattedMenu.map(item => ({
+                _id: item._id,
+                item: item.name,
+                price: item.price,
+                description: item.description,
+                customizations: item.customizations
+            }))
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-app.get('/menu', async (req, res) => {
+app.get('/api/menu', async (req, res) => {
     try {
         const menuItems = await menu.getMenu();
-        res.json({ menu: menuItems });
+        const formattedMenu = menuItems.map(item => ({
+            _id: item._id,
+            item: item.name,
+            price: item.price,
+            description: item.description,
+            customizations: item.customizations
+        }));
+        res.json({ menu: formattedMenu });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-app.post('/order/cart', async (req, res) => {
+app.post('/api/order/cart', async (req, res) => {
     try {
         const result = await order.addToCart(req.body.item, req.body.price);
         res.status(201).json({ cart: result });
@@ -47,31 +69,36 @@ app.post('/order/cart', async (req, res) => {
     }
 });
 
-app.post('/order/place', async (req, res) => {
+app.post('/api/order/place', async (req, res) => {
     try {
         const result = await order.placeOrder();
-        // Créer un suivi de commande
-        await tracking.createTracking(result.orderNumber);
+        // Créer un suivi de commande avec les détails
+        const orderDetails = await order.getOrder(result.orderNumber);
+        await tracking.createTracking(result.orderNumber, orderDetails.items, orderDetails.total);
         res.status(201).json({ order: result });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-app.post('/payment', async (req, res) => {
+app.post('/api/payment', async (req, res) => {
     try {
         const result = await paymentSystem.processPayment(
             req.body.orderNumber,
             req.body.amount,
             req.body.paymentMethod
         );
+        // Mettre à jour le mode de paiement dans le tracking
+        if (result.success) {
+            await tracking.updatePaymentMethod(req.body.orderNumber, req.body.paymentMethod);
+        }
         res.status(201).json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-app.get('/payment/:id', async (req, res) => {
+app.get('/api/payment/:id', async (req, res) => {
     try {
         const result = await paymentSystem.getPaymentStatus(req.params.id);
         if (!result.success) {
@@ -83,13 +110,27 @@ app.get('/payment/:id', async (req, res) => {
     }
 });
 
-app.get('/tracking/:orderNumber', async (req, res) => {
+app.get('/api/tracking/:orderNumber', async (req, res) => {
     try {
         const result = await tracking.getOrderStatus(req.params.orderNumber);
         if (!result.success) {
             return res.status(200).json(result);
         }
         res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Route pour réinitialiser la base de données
+app.post('/api/reset-db', async (req, res) => {
+    try {
+        // Supprimer toutes les collections
+        const collections = await mongoose.connection.db.collections();
+        for (let collection of collections) {
+            await collection.deleteMany({});
+        }
+        res.json({ message: 'Base de données réinitialisée avec succès' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
